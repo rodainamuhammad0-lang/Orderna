@@ -69,6 +69,73 @@ function handlePublicBackendApi(app) {
         return res.status(400).send('Could not register user');
       }
     });
+    // ================================
+// VIEW MENU ITEMS FOR SPECIFIC TRUCK
+// GET /api/v1/menuItem/truck/:truckId
+// ================================
+app.get('/api/v1/menuItem/truck/:truckId', async (req, res) => {
+  try {
+    const truckId = Number(req.params.truckId);
+    if (!truckId) {
+      return res.status(400).send('Invalid truckId');
+    }
+
+    const result = await db.raw(
+      `SELECT *
+       FROM "FoodTruck"."MenuItems"
+       WHERE "truckId" = ?
+       ORDER BY "createdAt" DESC`,
+      [truckId]
+    );
+
+    return res.status(200).json({
+      truckId,
+      menuItems: result.rows
+    });
+
+  } catch (err) {
+    console.log('Error fetching menu items by truck:', err.message);
+    return res.status(500).send('Could not fetch menu items');
+  }
+});
+
+
+
+
+// ==========================================
+// VIEW MENU ITEMS BY TRUCK + CATEGORY FILTER
+// GET /api/v1/menuItem/truck/:truckId/category/:category
+// ==========================================
+app.get('/api/v1/menuItem/truck/:truckId/category/:category', async (req, res) => {
+  try {
+    const truckId = Number(req.params.truckId);
+    const category = req.params.category;
+
+    if (!truckId || !category) {
+      return res.status(400).send('truckId and category are required');
+    }
+
+    const result = await db.raw(
+      `SELECT *
+       FROM "FoodTruck"."MenuItems"
+       WHERE "truckId" = ?
+         AND "category" ILIKE ?
+       ORDER BY "createdAt" DESC`,
+      [truckId, `%${category}%`]
+    );
+
+    return res.status(200).json({
+      truckId,
+      category,
+      menuItems: result.rows
+    });
+
+  } catch (err) {
+    console.log('Error filtering menu items:', err.message);
+    return res.status(500).send('Could not fetch filtered menu');
+  }
+});
+
 
 
 

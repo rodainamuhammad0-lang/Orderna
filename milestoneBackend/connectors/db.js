@@ -10,7 +10,7 @@ const config = {
     port : 5432,
     user : 'postgres',
     password : process.env.PASSWORD,
-    database : 'postgres'
+    database : 'orderna_db'
   }
 };
 

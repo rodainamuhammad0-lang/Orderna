@@ -1,33 +1,33 @@
-const db = require('../connectors/db');
-const {getSessionToken} = require('../utils/session');
+const { getSessionToken } = require("../utils/session");
+const db = require("../connectors/db");
 
 async function authMiddleware(req, res, next) {
-  
+  const token = getSessionToken(req);
 
-  const sessionToken = getSessionToken(req);
-  //console.log(sessionToken)
-  if (!sessionToken) {
-    console.log("sesison token is null")
-    return res.status(301).redirect('/');
-  }
-  // We then get the session of the user from our session map
-  // that we set in the signinHandler
-  const userSession = await db.select('*').from('FoodTruck.Sessions').where('token', sessionToken).first();
-  if (!userSession) {
-    console.log("user session token is not found you need to login")
-    // If the session token is not present in session map, return an unauthorized error
-    return res.status(301).redirect('/');
-  }
-  // if the session has expired, return an unauthorized error, and delete the 
-  // session from our map
-  if (new Date() > userSession.expiresAt) {
-    console.log("expired session you need to login again");
-    return res.status(301).redirect('/');
+  if (!token) {
+    console.log("❌ authMiddleware: token is null");
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
-  // If all checks have passed, we can consider the user authenticated
+  console.log("➡️ authMiddleware token:", token);
+
+  const result = await db.raw(
+    `SELECT * FROM "FoodTruck"."Sessions" WHERE "token" = ?`,
+    [token]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(401).json({ error: "Invalid session" });
+  }
+
+  const session = result.rows[0];
+
+  if (new Date() > session.expiresAt) {
+    return res.status(401).json({ error: "Session expired" });
+  }
+
+  req.user = { userId: session.userId };
   next();
-};
+}
 
-
-module.exports = {authMiddleware}
+module.exports = { authMiddleware };

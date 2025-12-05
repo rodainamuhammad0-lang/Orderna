@@ -1,60 +1,75 @@
 const db = require('../connectors/db');
 
+/**
+ * Read token from Authorization header ("Bearer TOKEN") or cookie "session_token".
+ * Return the token string or null.
+ */
 function getSessionToken(req) {
-  
-  //console.log("cookie",req.headers.cookie);
-  if(!req.headers.cookie){
-    return null
-  }
-  const cookies = req.headers.cookie.split(';')
-    .map(function (cookie) { return cookie.trim() })
-    .filter(function (cookie) { return cookie.includes('session_token') })
-    .join('');
-
-  const sessionToken = cookies.slice('session_token='.length);
-  if (!sessionToken) {
-    return null;
-  }
-  return sessionToken;
-}
-
-async function getUser(req) {
-
-  const sessionToken = getSessionToken(req);
-  if (!sessionToken) {
-    console.log("no session token is found")
-    return res.status(301).redirect('/');
-  }
-
-
-  const user = await db.select('*')
-    .from({ s: 'FoodTruck.Sessions' })
-    .where('token', sessionToken)
-    .innerJoin('FoodTruck.Users as u', 's.userId', 'u.userId')
-    .first(); 
-
-  if(user.role == "truckOwner"){
-    const TruckRecord = await db.select('*')
-    .from({ u: 'FoodTruck.Trucks' })
-    .where('ownerId', user.userId)
-    // has no FoodTrucks
-    if(TruckRecord.length == 0){
-      console.log(`This ${user.name} has no owned trucks despite his role`);
-      console.log('user =>', user)
-      return user; 
-    }else{
-      const firstRecord = TruckRecord[0];
-      const truckOwnerUser =  {...user, ...firstRecord}
-      console.log('truck Owner user =>', truckOwnerUser)
-      return truckOwnerUser;
+  // 1) Authorization header
+  if (req.headers && req.headers.authorization) {
+    const parts = req.headers.authorization.split(' ');
+    if (parts.length === 2 && parts[0] === 'Bearer') {
+      return parts[1];
     }
   }
 
-  // role of customer
-  console.log('user =>', user)
-  return user;  
+  // 2) Cookie fallback (cookie name used in your login handler)
+  if (req.cookies && req.cookies.session_token) {
+    return req.cookies.session_token;
+  }
+
+  return null;
 }
 
+/**
+ * Validate token in DB and return a user-shaped object:
+ * { userId: <number>, token: <string>, role?: <string> }
+ * or null if not valid.
+ */
+async function getUser(req) {
+  try {
+    const token = getSessionToken(req);
+    if (!token) {
+      console.log('session token is null');
+      return null;
+    }
 
+    console.log('Incoming session token:', token);
 
-module.exports = {getSessionToken , getUser};
+    const result = await db.raw(
+      `SELECT * FROM "FoodTruck"."Sessions" WHERE "token" = ?`,
+      [token]
+    );
+
+    if (!result || !result.rows || result.rows.length === 0) {
+      console.log('No session found for token');
+      return null;
+    }
+
+    const session = result.rows[0];
+
+    // Optionally fetch the user role if you need it for authorization checks
+    const userRes = await db.raw(
+      `SELECT "userId", "role", "email", "name" FROM "FoodTruck"."Users" WHERE "userId" = ?`,
+      [session.userId]
+    );
+
+    const userRow = (userRes && userRes.rows && userRes.rows[0]) || null;
+
+    return {
+      userId: session.userId,
+      token,
+      role: userRow ? userRow.role : undefined,
+      email: userRow ? userRow.email : undefined,
+      name: userRow ? userRow.name : undefined
+    };
+  } catch (err) {
+    console.error('getUser error:', err);
+    return null;
+  }
+}
+
+module.exports = {
+  getSessionToken,
+  getUser
+};
